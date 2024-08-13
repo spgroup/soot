@@ -40,6 +40,7 @@ import soot.Context;
 import soot.FastHierarchy;
 import soot.Kind;
 import soot.Local;
+import soot.MethodSubSignature;
 import soot.PhaseOptions;
 import soot.PointsToAnalysis;
 import soot.PointsToSet;
@@ -51,6 +52,7 @@ import soot.SootField;
 import soot.SootMethod;
 import soot.Type;
 import soot.Value;
+import soot.VoidType;
 import soot.jimple.AssignStmt;
 import soot.jimple.ClassConstant;
 import soot.jimple.InstanceInvokeExpr;
@@ -77,6 +79,11 @@ import soot.jimple.spark.sets.SharedListSet;
 import soot.jimple.spark.sets.SortedArraySet;
 import soot.jimple.spark.solver.OnFlyCallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
+import soot.jimple.toolkits.callgraph.VirtualEdgesSummaries;
+import soot.jimple.toolkits.callgraph.VirtualEdgesSummaries.InstanceinvokeSource;
+import soot.jimple.toolkits.callgraph.VirtualEdgesSummaries.VirtualEdge;
+import soot.jimple.toolkits.callgraph.VirtualEdgesSummaries.VirtualEdgeSource;
+import soot.jimple.toolkits.callgraph.VirtualEdgesSummaries.VirtualEdgeTarget;
 import soot.jimple.toolkits.pointer.util.NativeMethodDriver;
 import soot.options.CGOptions;
 import soot.options.SparkOptions;
@@ -86,7 +93,6 @@ import soot.tagkit.Tag;
 import soot.toolkits.scalar.Pair;
 import soot.util.ArrayNumberer;
 import soot.util.HashMultiMap;
-import soot.util.LargeNumberedMap;
 import soot.util.MultiMap;
 import soot.util.queue.ChunkedQueue;
 import soot.util.queue.QueueReader;
@@ -112,6 +118,11 @@ public class PAG implements PointsToAnalysis {
     typeManager = new TypeManager(this);
     if (!opts.ignore_types()) {
       typeManager.setFastHierarchy(() -> Scene.v().getOrMakeFastHierarchy());
+    }
+    if (opts.cs_demand()) {
+      virtualCallsToReceivers = new HashMap<InvokeExpr, Node>();
+      callToMethod = new HashMap<InvokeExpr, SootMethod>();
+      callAssigns = new HashMultiMap<InvokeExpr, Pair<Node, Node>>();
     }
     switch (opts.set_impl()) {
       case SparkOptions.set_impl_hash:
@@ -691,7 +702,7 @@ public class PAG implements PointsToAnalysis {
   public GlobalVarNode makeGlobalVarNode(Object value, Type type) {
     if (opts.rta()) {
       value = null;
-      type = RefType.v("java.lang.Object");
+      type = Scene.v().getObjectType();
     }
     GlobalVarNode ret = valToGlobalVarNode.get(value);
     if (ret == null) {
@@ -721,13 +732,10 @@ public class PAG implements PointsToAnalysis {
   public LocalVarNode makeLocalVarNode(Object value, Type type, SootMethod method) {
     if (opts.rta()) {
       value = null;
-      type = RefType.v("java.lang.Object");
+      type = Scene.v().getObjectType();
       method = null;
     } else if (value instanceof Local) {
       Local val = (Local) value;
-      if (val.getNumber() == 0) {
-        Scene.v().getLocalNumberer().add(val);
-      }
       LocalVarNode ret = localToNodeMap.get(val);
       if (ret == null) {
         localToNodeMap.put((Local) value, ret = new LocalVarNode(this, value, type, method));
@@ -1069,11 +1077,44 @@ public class PAG implements PointsToAnalysis {
     MethodPAG tgtmpag = MethodPAG.v(this, e.tgt());
     Pair<Node, Node> pval;
 
-    if (e.isExplicit() || e.kind() == Kind.THREAD || e.kind() == Kind.ASYNCTASK) {
+    if (e.kind() == Kind.GENERIC_FAKE) {
+      if (getOnFlyCallGraph() == null) {
+        return;
+      }
+      VirtualEdgesSummaries summaries = getOnFlyCallGraph().ofcgb().getVirtualEdgeSummaries();
+      InvokeExpr ie = e.srcStmt().getInvokeExpr();
+      VirtualEdge ve = summaries.getVirtualEdgesMatchingSubSig(new MethodSubSignature(ie.getMethodRef().getSubSignature()));
+      // if there is no virtual edge there is no point in continuing
+      if (ve == null) {
+        return;
+      }
+      // The source is equal for direct and indirect targets
+      VirtualEdgeSource edgeSrc = ve.getSource();
+
+      if (edgeSrc instanceof InstanceinvokeSource) {
+        for (VirtualEdgeTarget edgeTgt : ve.getTargets()) {
+          for (Local local : getOnFlyCallGraph().ofcgb().getReceiversOfVirtualEdge(edgeTgt, ie)) {
+            Node parm = srcmpag.nodeFactory().getNode(local);
+            parm = srcmpag.parameterize(parm, e.srcCtxt());
+            parm = parm.getReplacement();
+
+            // Get the PAG node for the "this" local in the callback
+            Node thiz = tgtmpag.nodeFactory().caseThis();
+            thiz = tgtmpag.parameterize(thiz, e.tgtCtxt());
+            thiz = thiz.getReplacement();
+
+            // Make an edge from caller.argument to callee.this
+            addEdge(parm, thiz);
+            pval = addInterproceduralAssignment(parm, thiz, e);
+          }
+        }
+      }
+    } else if (e.isExplicit() || e.kind() == Kind.THREAD) {
       addCallTarget(srcmpag, tgtmpag, (Stmt) e.srcUnit(), e.srcCtxt(), e.tgtCtxt(), e);
+    } else if (e.kind() == Kind.ASYNCTASK) {
+      addCallTarget(srcmpag, tgtmpag, (Stmt) e.srcUnit(), e.srcCtxt(), e.tgtCtxt(), e, false);
     } else if (e.kind() == Kind.EXECUTOR) {
       InvokeExpr ie = e.srcStmt().getInvokeExpr();
-      boolean virtualCall = callAssigns.containsKey(ie);
 
       Node parm = srcmpag.nodeFactory().getNode(ie.getArg(0));
       parm = srcmpag.parameterize(parm, e.srcCtxt());
@@ -1085,16 +1126,16 @@ public class PAG implements PointsToAnalysis {
 
       addEdge(parm, thiz);
       pval = addInterproceduralAssignment(parm, thiz, e);
-      callAssigns.put(ie, pval);
-      callToMethod.put(ie, srcmpag.getMethod());
 
-      if (virtualCall && !virtualCallsToReceivers.containsKey(ie)) {
-        virtualCallsToReceivers.put(ie, parm);
+      if (callAssigns != null) {
+        callToMethod.put(ie, srcmpag.getMethod());
+        boolean virtualCall = !callAssigns.put(ie, pval);
+        if (virtualCall) {
+          virtualCallsToReceivers.putIfAbsent(ie, parm);
+        }
       }
     } else if (e.kind() == Kind.HANDLER) {
       InvokeExpr ie = e.srcStmt().getInvokeExpr();
-      boolean virtualCall = callAssigns.containsKey(ie);
-      assert virtualCall == true;
 
       Node base = srcmpag.nodeFactory().getNode(((VirtualInvokeExpr) ie).getBase());
       base = srcmpag.parameterize(base, e.srcCtxt());
@@ -1106,10 +1147,12 @@ public class PAG implements PointsToAnalysis {
 
       addEdge(base, thiz);
       pval = addInterproceduralAssignment(base, thiz, e);
-      callAssigns.put(ie, pval);
-      callToMethod.put(ie, srcmpag.getMethod());
-
-      virtualCallsToReceivers.put(ie, base);
+      if (callAssigns != null) {
+        boolean virtualCall = !callAssigns.put(ie, pval);
+        assert virtualCall;
+        callToMethod.put(ie, srcmpag.getMethod());
+        virtualCallsToReceivers.put(ie, base);
+      }
     } else if (e.kind() == Kind.PRIVILEGED) {
       // Flow from first parameter of doPrivileged() invocation
       // to this of target, and from return of target to the
@@ -1126,8 +1169,10 @@ public class PAG implements PointsToAnalysis {
 
       addEdge(parm, thiz);
       pval = addInterproceduralAssignment(parm, thiz, e);
-      callAssigns.put(ie, pval);
-      callToMethod.put(ie, srcmpag.getMethod());
+      if (callAssigns != null) {
+        callAssigns.put(ie, pval);
+        callToMethod.put(ie, srcmpag.getMethod());
+      }
 
       if (e.srcUnit() instanceof AssignStmt) {
         AssignStmt as = (AssignStmt) e.srcUnit();
@@ -1142,8 +1187,10 @@ public class PAG implements PointsToAnalysis {
 
         addEdge(ret, lhs);
         pval = addInterproceduralAssignment(ret, lhs, e);
-        callAssigns.put(ie, pval);
-        callToMethod.put(ie, srcmpag.getMethod());
+        if (callAssigns != null) {
+          callAssigns.put(ie, pval);
+          callToMethod.put(ie, srcmpag.getMethod());
+        }
       }
     } else if (e.kind() == Kind.FINALIZE) {
       Node srcThis = srcmpag.nodeFactory().caseThis();
@@ -1179,8 +1226,10 @@ public class PAG implements PointsToAnalysis {
       }
 
       pval = addInterproceduralAssignment(newObject, initThis, e);
-      callAssigns.put(s.getInvokeExpr(), pval);
-      callToMethod.put(s.getInvokeExpr(), srcmpag.getMethod());
+      if (callAssigns != null) {
+        callAssigns.put(s.getInvokeExpr(), pval);
+        callToMethod.put(s.getInvokeExpr(), srcmpag.getMethod());
+      }
     } else if (e.kind() == Kind.REFL_INVOKE) {
       // Flow (1) from first parameter of invoke(..) invocation
       // to this of target, (2) from the contents of the second (array)
@@ -1204,8 +1253,10 @@ public class PAG implements PointsToAnalysis {
 
         addEdge(parm0, thiz);
         pval = addInterproceduralAssignment(parm0, thiz, e);
-        callAssigns.put(ie, pval);
-        callToMethod.put(ie, srcmpag.getMethod());
+        if (callAssigns != null) {
+          callAssigns.put(ie, pval);
+          callToMethod.put(ie, srcmpag.getMethod());
+        }
       }
 
       // (2)
@@ -1231,7 +1282,9 @@ public class PAG implements PointsToAnalysis {
 
           addEdge(parm1contents, tgtParmI);
           pval = addInterproceduralAssignment(parm1contents, tgtParmI, e);
-          callAssigns.put(ie, pval);
+          if (callAssigns != null) {
+            callAssigns.put(ie, pval);
+          }
         }
       }
 
@@ -1252,7 +1305,9 @@ public class PAG implements PointsToAnalysis {
 
         addEdge(ret, lhs);
         pval = addInterproceduralAssignment(ret, lhs, e);
-        callAssigns.put(ie, pval);
+        if (callAssigns != null) {
+          callAssigns.put(ie, pval);
+        }
       }
     } else if (e.kind() == Kind.REFL_CLASS_NEWINSTANCE || e.kind() == Kind.REFL_CONSTR_NEWINSTANCE) {
       // (1) create a fresh node for the new object
@@ -1277,7 +1332,7 @@ public class PAG implements PointsToAnalysis {
         cls = findLocalVarNode(((VarNode) cls).getVariable());
       }
 
-      VarNode newObject = makeGlobalVarNode(cls, RefType.v("java.lang.Object"));
+      VarNode newObject = makeGlobalVarNode(cls, Scene.v().getObjectType());
       SootClass tgtClass = e.getTgt().method().getDeclaringClass();
       RefType tgtType = tgtClass.getType();
       AllocNode site = makeAllocNode(new Pair<Node, SootClass>(cls, tgtClass), tgtType, null);
@@ -1314,7 +1369,9 @@ public class PAG implements PointsToAnalysis {
 
             addEdge(parm1contents, tgtParmI);
             pval = addInterproceduralAssignment(parm1contents, tgtParmI, e);
-            callAssigns.put(iie, pval);
+            if (callAssigns != null) {
+              callAssigns.put(iie, pval);
+            }
           }
         }
       }
@@ -1329,8 +1386,10 @@ public class PAG implements PointsToAnalysis {
       }
 
       pval = addInterproceduralAssignment(newObject, initThis, e);
-      callAssigns.put(s.getInvokeExpr(), pval);
-      callToMethod.put(s.getInvokeExpr(), srcmpag.getMethod());
+      if (callAssigns != null) {
+        callAssigns.put(s.getInvokeExpr(), pval);
+        callToMethod.put(s.getInvokeExpr(), srcmpag.getMethod());
+      }
     } else {
       throw new RuntimeException("Unhandled edge " + e);
     }
@@ -1341,17 +1400,22 @@ public class PAG implements PointsToAnalysis {
    * call site, without actually connecting them to any target method.
    **/
   public void addCallTarget(MethodPAG srcmpag, MethodPAG tgtmpag, Stmt s, Context srcContext, Context tgtContext, Edge e) {
+    addCallTarget(srcmpag, tgtmpag, s, srcContext, tgtContext, e, true);
+  }
+
+  /**
+   * Adds method target as a possible target of the invoke expression in s. If target is null, only creates the nodes for the
+   * call site, without actually connecting them to any target method.
+   **/
+  public void addCallTarget(MethodPAG srcmpag, MethodPAG tgtmpag, Stmt s, Context srcContext, Context tgtContext, Edge e,
+      boolean propagateReturn) {
     MethodNodeFactory srcnf = srcmpag.nodeFactory();
     MethodNodeFactory tgtnf = tgtmpag.nodeFactory();
     InvokeExpr ie = s.getInvokeExpr();
-    boolean virtualCall = callAssigns.containsKey(ie);
     int numArgs = ie.getArgCount();
     for (int i = 0; i < numArgs; i++) {
       Value arg = ie.getArg(i);
-      if (!(arg.getType() instanceof RefLikeType)) {
-        continue;
-      }
-      if (arg instanceof NullConstant) {
+      if (!(arg.getType() instanceof RefLikeType) || (arg instanceof NullConstant)) {
         continue;
       }
 
@@ -1359,14 +1423,22 @@ public class PAG implements PointsToAnalysis {
       argNode = srcmpag.parameterize(argNode, srcContext);
       argNode = argNode.getReplacement();
 
+      // target method's argument number may be less than source method, i.e. AsyncTask.execute(1) vs onPreExecute(0)
+      // check for param return here, or NPE in paramTypes will be thrown
       Node parm = tgtnf.caseParm(i);
+      if (parm == null) {
+        continue;
+      }
+
       parm = tgtmpag.parameterize(parm, tgtContext);
       parm = parm.getReplacement();
 
       addEdge(argNode, parm);
       Pair<Node, Node> pval = addInterproceduralAssignment(argNode, parm, e);
-      callAssigns.put(ie, pval);
-      callToMethod.put(ie, srcmpag.getMethod());
+      if (callAssigns != null) {
+        callAssigns.put(ie, pval);
+        callToMethod.put(ie, srcmpag.getMethod());
+      }
     }
     if (ie instanceof InstanceInvokeExpr) {
       InstanceInvokeExpr iie = (InstanceInvokeExpr) ie;
@@ -1380,28 +1452,37 @@ public class PAG implements PointsToAnalysis {
       thisRef = thisRef.getReplacement();
       addEdge(baseNode, thisRef);
       Pair<Node, Node> pval = addInterproceduralAssignment(baseNode, thisRef, e);
-      callAssigns.put(ie, pval);
-      callToMethod.put(ie, srcmpag.getMethod());
-      if (virtualCall && !virtualCallsToReceivers.containsKey(ie)) {
-        virtualCallsToReceivers.put(ie, baseNode);
+      if (callAssigns != null) {
+        boolean virtualCall = !callAssigns.put(ie, pval);
+        callToMethod.put(ie, srcmpag.getMethod());
+        if (virtualCall) {
+          virtualCallsToReceivers.putIfAbsent(ie, baseNode);
+        }
       }
     }
-    if (s instanceof AssignStmt) {
+    if (propagateReturn && s instanceof AssignStmt) {
       Value dest = ((AssignStmt) s).getLeftOp();
       if (dest.getType() instanceof RefLikeType && !(dest instanceof NullConstant)) {
+        if (tgtnf.getMethod().getReturnType() instanceof VoidType) {
+          logger.warn(
+              tgtnf.getMethod() + " has a void return type, but we found a statement which uses its return value: " + s);
+        } else {
 
-        Node destNode = srcnf.getNode(dest);
-        destNode = srcmpag.parameterize(destNode, srcContext);
-        destNode = destNode.getReplacement();
+          Node destNode = srcnf.getNode(dest);
+          destNode = srcmpag.parameterize(destNode, srcContext);
+          destNode = destNode.getReplacement();
 
-        Node retNode = tgtnf.caseRet();
-        retNode = tgtmpag.parameterize(retNode, tgtContext);
-        retNode = retNode.getReplacement();
+          Node retNode = tgtnf.caseRet();
+          retNode = tgtmpag.parameterize(retNode, tgtContext);
+          retNode = retNode.getReplacement();
 
-        addEdge(retNode, destNode);
-        Pair<Node, Node> pval = addInterproceduralAssignment(retNode, destNode, e);
-        callAssigns.put(ie, pval);
-        callToMethod.put(ie, srcmpag.getMethod());
+          addEdge(retNode, destNode);
+          Pair<Node, Node> pval = addInterproceduralAssignment(retNode, destNode, e);
+          if (callAssigns != null) {
+            callAssigns.put(ie, pval);
+            callToMethod.put(ie, srcmpag.getMethod());
+          }
+        }
       }
     }
   }
@@ -1466,7 +1547,7 @@ public class PAG implements PointsToAnalysis {
   private OnFlyCallGraph ofcg;
   private final ArrayList<VarNode> dereferences = new ArrayList<VarNode>();
   protected TypeManager typeManager;
-  private final LargeNumberedMap<Local, LocalVarNode> localToNodeMap = new LargeNumberedMap<>(Scene.v().getLocalNumberer());
+  protected Map<Local, LocalVarNode> localToNodeMap = new HashMap<>();
   private final Map<Value, NewInstanceNode> newInstToNodeMap = new HashMap<>();
   public int maxFinishNumber = 0;
   private Map<Node, Tag> nodeToTag;
@@ -1478,8 +1559,8 @@ public class PAG implements PointsToAnalysis {
 
   public NativeMethodDriver nativeMethodDriver;
 
-  public HashMultiMap<InvokeExpr, Pair<Node, Node>> callAssigns = new HashMultiMap<InvokeExpr, Pair<Node, Node>>();
-  public Map<InvokeExpr, SootMethod> callToMethod = new HashMap<InvokeExpr, SootMethod>();
-  public Map<InvokeExpr, Node> virtualCallsToReceivers = new HashMap<InvokeExpr, Node>();
+  public HashMultiMap<InvokeExpr, Pair<Node, Node>> callAssigns;
+  public Map<InvokeExpr, SootMethod> callToMethod;
+  public Map<InvokeExpr, Node> virtualCallsToReceivers;
 
 }

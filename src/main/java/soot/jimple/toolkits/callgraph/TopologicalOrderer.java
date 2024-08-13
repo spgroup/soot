@@ -23,26 +23,27 @@ package soot.jimple.toolkits.callgraph;
  */
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import soot.MethodOrMethodContext;
-import soot.Scene;
 import soot.SootMethod;
-import soot.util.NumberedSet;
 
 public class TopologicalOrderer {
-  CallGraph cg;
-  List<SootMethod> order = new ArrayList<SootMethod>();
-  NumberedSet<SootMethod> visited = new NumberedSet<SootMethod>(Scene.v().getMethodNumberer());
+  private final CallGraph cg;
+  private final List<SootMethod> order;
+  private final Set<SootMethod> visited;
 
   public TopologicalOrderer(CallGraph cg) {
     this.cg = cg;
+    this.order = new ArrayList<SootMethod>();
+    this.visited = new HashSet<SootMethod>();
   }
 
   public void go() {
-    Iterator<MethodOrMethodContext> methods = cg.sourceMethods();
-    while (methods.hasNext()) {
+    for (Iterator<MethodOrMethodContext> methods = cg.sourceMethods(); methods.hasNext();) {
       SootMethod m = (SootMethod) methods.next();
       dfsVisit(m);
     }
@@ -53,8 +54,7 @@ public class TopologicalOrderer {
       return;
     }
     visited.add(m);
-    Iterator<MethodOrMethodContext> targets = new Targets(cg.edgesOutOf(m));
-    while (targets.hasNext()) {
+    for (Iterator<MethodOrMethodContext> targets = new Targets(cg.edgesOutOf(m)); targets.hasNext();) {
       SootMethod target = (SootMethod) targets.next();
       dfsVisit(target);
     }

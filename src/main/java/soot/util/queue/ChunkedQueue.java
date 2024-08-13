@@ -33,7 +33,6 @@ package soot.util.queue;
 @SuppressWarnings("unchecked")
 public class ChunkedQueue<E> {
 
-  protected static final Object NULL_CONST = new Object();
   protected static final Object DELETED_CONST = new Object();
 
   protected static final int LENGTH = 60;
@@ -48,7 +47,7 @@ public class ChunkedQueue<E> {
   /** Add an object to the queue. */
   public void add(E o) {
     if (o == null) {
-      o = (E) NULL_CONST;
+      throw new IllegalArgumentException("Null is not allowed");
     }
     if (index == LENGTH - 1) {
       Object[] temp = new Object[LENGTH];
@@ -62,6 +61,36 @@ public class ChunkedQueue<E> {
   /** Create reader which will read objects from the queue. */
   public QueueReader<E> reader() {
     return new QueueReader<E>((E[]) q, index);
+  }
+
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("[");
+    boolean isFirst = true;
+
+    int idx = index;
+    Object[] curArray = q;
+    while (idx < curArray.length) {
+      Object curObj = curArray[idx];
+      if (curObj == null) {
+        break;
+      }
+      if (isFirst) {
+        isFirst = false;
+      } else {
+        sb.append(", ");
+      }
+      if (curObj instanceof Object[]) {
+        curArray = (Object[]) curObj;
+        idx = 0;
+      } else {
+        sb.append(curObj.toString());
+        idx++;
+      }
+    }
+    sb.append("]");
+    return sb.toString();
   }
 
 }

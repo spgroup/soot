@@ -64,7 +64,7 @@ public class ExceptionNode {
 
   public boolean add_TryStmts(Collection<AugmentedStmt> c) {
     for (AugmentedStmt as : c) {
-      if (add_TryStmt(as) == false) {
+      if (!add_TryStmt(as)) {
         return false;
       }
     }
@@ -105,7 +105,7 @@ public class ExceptionNode {
   }
 
   public boolean remove(AugmentedStmt as) {
-    if (body.contains(as) == false) {
+    if (!body.contains(as)) {
       return false;
     }
 
@@ -134,7 +134,7 @@ public class ExceptionNode {
 
       for (AugmentedStmt as : catchBody) {
         for (AugmentedStmt succ : as.bsuccs) {
-          if (catchBody.contains(succ) == false) {
+          if (!catchBody.contains(succ)) {
             exitList.add(as);
             break;
           }
@@ -154,7 +154,7 @@ public class ExceptionNode {
     oldBody.addAll(body);
 
     for (AugmentedStmt as : newTryBody) {
-      if (remove(as) == false) {
+      if (!remove(as)) {
 
         StringBuffer b = new StringBuffer();
         for (AugmentedStmt auBody : newTryBody) {
@@ -190,7 +190,7 @@ public class ExceptionNode {
       as.remove_CSucc(newCatchTarget);
       newCatchTarget.remove_CPred(as);
     }
-
+    IterableSet<ExceptionNode> toAdd = new IterableSet<ExceptionNode>();
     for (ExceptionNode en : enlist) {
       if (this == en) {
         continue;
@@ -204,10 +204,10 @@ public class ExceptionNode {
           clonedTryBody.add(asg.get_CloneOf(au));
         }
 
-        enlist.addLast(new ExceptionNode(clonedTryBody, en.exception, asg.get_CloneOf(en.handlerAugmentedStmt)));
+        toAdd.addLast(new ExceptionNode(clonedTryBody, en.exception, asg.get_CloneOf(en.handlerAugmentedStmt)));
       }
     }
-
+    enlist.addAll(toAdd);
     enlist.addLast(new ExceptionNode(newTryBody, exception, asg.get_CloneOf(handlerAugmentedStmt)));
 
     for (ExceptionNode en : enlist) {

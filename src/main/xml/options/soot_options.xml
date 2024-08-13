@@ -221,11 +221,6 @@
     <section>
         <name>General Options</name>
         <boolopt>
-            <name>Coffi Frontend</name>
-            <alias>coffi</alias>
-            <short_desc>Use the good old Coffi front end for parsing Java bytecode (instead of using ASM).</short_desc>
-        </boolopt>
-        <boolopt>
             <name>Jasmin Backend</name>
             <alias>jasmin-backend</alias>
             <short_desc>Use the Jasmin back end for generating Java bytecode (instead of using ASM).</short_desc>
@@ -408,11 +403,14 @@
         <boolopt>
             <name>Weak Map Structures</name>
             <alias>weak-map-structures</alias>
-            <short_desc>Use weak references in Scene to prevent memory leakage when removing many classes/methods/locals</short_desc>
+            <short_desc>Use weak references in Scene to prevent memory leakage when removing many
+                classes/methods/locals
+            </short_desc>
             <long_desc>
                 If this option is set, Soot will use Maps with weak references to lower memory usage when performing
                 many additions and deletions of classes/methods/locals. Without this option, all created objects
-                are kept in memory. This has a bit larger memory footprint if only a small amount of deletions are conducted.
+                are kept in memory. This has a bit larger memory footprint if only a small amount of deletions are
+                conducted.
             </long_desc>
         </boolopt>
     </section>
@@ -461,7 +459,7 @@
             </long_desc>
         </stropt>
 
-			<stropt>
+        <stropt>
 			<name>Soot Modulepath</name>
 			<alias>soot-modulepath</alias>
 			<set_arg_label>modulepath</set_arg_label>
@@ -482,6 +480,16 @@
 			</long_desc>
 		</stropt>
 
+        <stropt>
+            <name>Dotnet NativeHost Path</name>
+            <alias>dotnet-nativehost-path</alias>
+            <short_desc>Use <alias/> to locate your NativeHost Java JNI library.</short_desc>
+            <long_desc>
+                <p>
+                    Use dotnet-nativehost-path to load the NativeHost library which is needed for soot.dotnet.
+                </p>
+            </long_desc>
+        </stropt>
 	
         <boolopt>
             <name>Prepend classpath</name>
@@ -539,8 +547,9 @@
             <alias>process-path</alias>
             <alias>process-dir</alias>
             <set_arg_label>dir</set_arg_label>
-            <short_desc>Process all classes found in
-                <use_arg_label/>
+            <short_desc>
+                Process all classes found in <use_arg_label/> 
+                (but not classes within JAR files in <use_arg_label/>, use <tt>process-jar-dir</tt> for that)
             </short_desc>
             <long_desc>
                 <p>
@@ -565,6 +574,50 @@
                 </p>
             </long_desc>
         </listopt>
+        <listopt>
+            <name>Process JAR Directory</name>
+            <alias>process-jar-dir</alias>
+            <set_arg_label>dir</set_arg_label>
+            <short_desc>Process all classes found in JAR files found in
+                <use_arg_label/>
+            </short_desc>
+            <long_desc>
+                <p>
+                    Add all classes found in JAR files found in
+                    <use_arg_label/>
+                    to the set of argument classes
+                    which is analyzed and transformed by Soot. You can specify the
+                    option more than once, to add argument classes from multiple directories.
+                </p>
+            </long_desc>
+        </listopt>
+        <stropt>
+            <name>VirtualEdges Path</name>
+            <alias>virtualedges-path</alias>
+            <short_desc>Path to virtual edges configuration used in call graphs</short_desc>
+            <long_desc>
+                <p>
+                    Use virtual edges configuration file from location <alias/> used in call graph algorithms.
+                </p>
+            </long_desc>
+        </stropt>
+        <boolopt>
+            <name>Derive Java version from input</name>
+            <alias>derive-java-version</alias>
+            <default>true</default>
+            <short_desc>Java version for output and internal processing will be derived from the given input classes
+            </short_desc>
+            <long_desc>
+                If this flag is set and the ASM frontend is uese, Soot will derive the Java bytecode version from the
+                given Java class input. It will asume the highest bycode version as the version to take.
+                Writen-out files will then be written out with this bytecode version. Also, some optimizations depend on
+                knowing the language level, e.g., interfaces will only be considered for computing static dispatch for a
+                languag level >=8.
+                <p/>
+                This option is ignored if the language level is enforced manually with the output option <t>
+                java-version</t>.
+            </long_desc>
+        </boolopt>
         <boolopt>
             <name>One at a time</name>
             <alias>oaat</alias>
@@ -728,6 +781,15 @@
                     file.
                 </long_desc>
             </value>
+            <value>
+                <name>Dotnet Assembly</name>
+                <alias>dotnet</alias>
+                <short_desc>Favour .NET assemblies files as Soot source</short_desc>
+                <long_desc>
+                    Try to resolve classes from <tt>.dll</tt> and <tt>.exe</tt> files found in
+                    the Soot classpath.
+                </long_desc>
+            </value>
         </multiopt>
         <boolopt>
             <name>Force complete resolver</name>
@@ -745,6 +807,23 @@
                 in whole-program mode, this switch has no effect, and class resolution is
                 always performed as if it were turned on.
             </long_desc>
+        </boolopt>
+        <boolopt>
+            <name>Ignore MethodSource Error</name>
+            <alias>ignore-methodsource-error</alias>
+            <short_desc>Ignore errors from method source and return empty jimple body</short_desc>
+            <long_desc>
+                Allow to ignore thrown exceptions and return an empty jimple body instead.
+            </long_desc>
+        </boolopt>
+        <boolopt>
+            <name>Resolve all Dotnet Methods</name>
+            <alias>resolve-all-dotnet-methods</alias>
+            <short_desc>Resolve all dotnet methods, such as unsafe methods</short_desc>
+            <long_desc>
+                Resolve all dotnet methods, such as unsafe methods or methods with pointers as parameter.
+            </long_desc>
+            <default>true</default>
         </boolopt>
         <boolopt>
             <name>Allow Phantom References</name>
@@ -765,6 +844,15 @@
                 when allow-phantom-refs is enabled. This can be used to add missing
                 methods and fields to a class that may not exactly match a similar
                 class used by other classes.
+            </long_desc>
+        </boolopt>
+        <boolopt>
+            <name>Allow Errors during callgraph construction</name>
+            <alias>allow-cg-errors</alias>
+            <short_desc>Allow Errors during callgraph construction</short_desc>
+            <long_desc>
+                Allow the callgraph construction to continue even if there are errors.
+                Errors are logged instead.
             </long_desc>
         </boolopt>
         <boolopt>
@@ -834,6 +922,19 @@
                 garbage
                 collection of the method source. On the other hand, if the body is ever released, it cannot easily be
                 recovered (i.e., loaded again) easily.
+            </long_desc>
+        </boolopt>
+        <boolopt>
+            <name>Enable native code</name>
+            <alias>nc</alias>
+            <alias>native-code</alias>
+            <default>false</default>
+            <short_desc>Enables native methods to be concrete. Needed for analyzing the Java Native Interface.</short_desc>
+            <long_desc>
+                This option is needed, when analyzing native code. Particularly when using the 
+                Java Native Interface (JNI). If this option is enabled (set true), it allows 
+                native methods to be concrete. This flag will be checked in the 
+                SootMethod.isConcrete() method, allowing native methods to have a body.
             </long_desc>
         </boolopt>
     </section>
@@ -1157,7 +1258,34 @@
                 <alias>9</alias>
                 <short_desc>Force Java 1.9 as output version (Experimental).</short_desc>
                 <long_desc>
-                    Force Java 1.9 as output version.  (Experimental)
+                    Force Java 1.9 as output version. (Experimental)
+                </long_desc>
+            </value>
+            <value>
+                <name>Java 1.10</name>
+                <alias>1.10</alias>
+                <alias>10</alias>
+                <short_desc>Force Java 1.10 as output version (Experimental).</short_desc>
+                <long_desc>
+                    Force Java 1.10 as output version. (Experimental)
+                </long_desc>
+            </value>
+            <value>
+                <name>Java 1.11</name>
+                <alias>1.11</alias>
+                <alias>11</alias>
+                <short_desc>Force Java 1.11 as output version (Experimental).</short_desc>
+                <long_desc>
+                    Force Java 1.11 as output version. (Experimental)
+                </long_desc>
+            </value>
+            <value>
+                <name>Java 1.12</name>
+                <alias>1.12</alias>
+                <alias>12</alias>
+                <short_desc>Force Java 1.12 as output version (Experimental).</short_desc>
+                <long_desc>
+                    Force Java 1.12 as output version. (Experimental)
                 </long_desc>
             </value>
         </multiopt>
@@ -1507,6 +1635,17 @@
                     <short_desc/>
                     <long_desc/>
                 </boolopt>
+		<boolopt>
+                    <name>Optimize Jimple Body</name>
+                    <alias>optimize</alias>
+                    <default>true</default>
+                    <short_desc/>
+                    <long_desc>
+                      Perform several optmizations while creating
+		      the Jimple body (such as copy propagation and
+		      dead assignment elimination).
+                    </long_desc>
+                </boolopt>
                 <boolopt>
                     <name>Use Original Names</name>
                     <alias>use-original-names</alias>
@@ -1604,6 +1743,16 @@
                         introduces new variables so that each disjoint web is associated
                         with a single local.
                     </long_desc>
+                </sub_phase>
+                <sub_phase>
+                    <name>Shared Initialization Local Splitter</name>
+                    <alias>jb.sils</alias>
+                    <boolopt>
+                        <name>Enabled</name>
+                        <alias>enabled</alias>
+                        <default>true</default>
+                    </boolopt>
+                    <short_desc>Splits primitive locals used as different types</short_desc>
                 </sub_phase>
                 <sub_phase>
                     <name>Jimple Local Aggregator</name>
@@ -1965,6 +2114,25 @@
                         <default>false</default>
                     </boolopt>
                 </sub_phase>
+                <sub_phase>
+                    <name>Conditional Branch Folder</name>
+                    <alias>jb.cbf</alias>
+                    <short_desc>Conditional branch folder</short_desc>
+                    <long_desc>
+                        The Conditional Branch Folder statically evaluates the
+                        conditional expression of Jimple <tt>if</tt> statements. If the
+                        condition is identically <tt>true</tt> or
+                        <tt>false</tt>, the Folder replaces the conditional branch
+                        statement with an unconditional <tt>goto</tt> statement.
+                    </long_desc>
+                    <boolopt>
+                        <name>Enabled</name>
+                        <alias>enabled</alias>
+                        <default>true</default>
+                        <short_desc/>
+                        <long_desc/>
+                    </boolopt>
+                </sub_phase>
             </phase>
             <phase>
                 <name>Java To Jimple Body Creation</name>
@@ -2008,6 +2176,16 @@
                         introduces new variables so that each disjoint web is associated
                         with a single local.
                     </long_desc>
+                </sub_phase>
+                <sub_phase>
+                    <name>Shared Initialization Local Splitter</name>
+                    <alias>jj.sils</alias>
+                    <boolopt>
+                        <name>Enabled</name>
+                        <alias>enabled</alias>
+                        <default>true</default>
+                    </boolopt>
+                    <short_desc>Splits primitive locals used as different types</short_desc>
                 </sub_phase>
                 <sub_phase>
                     <name>Jimple Local Aggregator</name>
@@ -5076,7 +5254,7 @@ This locking scheme aims to achieve simple fine-grained locking.
                     <default>false</default>
                     <short_desc>Compute extended SSA (SSI) form.</short_desc>
                     <long_desc>
-                        If enabled, Shimple will created extended SSA (SSI) form.
+                        If enabled, Shimple will create extended SSA (SSI) form.
                     </long_desc>
                 </boolopt>
                 <boolopt>
@@ -6564,6 +6742,19 @@ This locking scheme aims to achieve simple fine-grained locking.
                         </long_desc>
                     </boolopt>
                 </sub_phase>
+                <sub_phase>
+                    <name>Nop Eliminator</name>
+                    <alias>bb.ne</alias>
+                    <short_desc>Nop eliminator</short_desc>
+                    <long_desc>
+                        The Nop Eliminator removes <tt>nop</tt> instructions from the method.
+                    </long_desc>
+                    <boolopt>
+                        <name>Enabled</name>
+                        <alias>enabled</alias>
+                        <default>true</default>
+                    </boolopt>
+                </sub_phase>
             </phase>
             <phase>
                 <name>Baf Optimization</name>
@@ -6810,6 +7001,18 @@ This locking scheme aims to achieve simple fine-grained locking.
 
 
         </phaseopt>
+        <intopt>
+            <name>Class transformation parallelism</name>
+            <alias>t</alias>
+            <alias>num-threads</alias>
+            <set_arg_label>num</set_arg_label>
+            <short_desc>Force Soot to use <use_arg_label/> threads when transforming classes.
+            </short_desc>
+            <long_desc>
+                Force Soot to use <use_arg_label/> threads to transform classes in parallel.
+                The default behavior is to use one thread per processor.
+            </long_desc>
+        </intopt>
         <macroopt>
             <name>Optimize</name>
             <alias>O</alias>
@@ -6905,7 +7108,6 @@ This locking scheme aims to achieve simple fine-grained locking.
                 <name>Unit</name>
                 <alias>unit</alias>
                 <short_desc>Unit Throw Analysis</short_desc>
-                <default/>
                 <long_desc>
                     Says that each statement in the intermediate representation
                     may throw those exception types associated with the corresponding
@@ -6921,6 +7123,24 @@ This locking scheme aims to achieve simple fine-grained locking.
                 <long_desc>
                     Specialized throw analysis implementation that covers the semantics of the Dalvik
                     IR used for Android apps
+                </long_desc>
+            </value>
+            <value>
+                <name>Dotnet</name>
+                <alias>dotnet</alias>
+                <short_desc>Dotnet Throw Analysis</short_desc>
+                <long_desc>
+                    Specialized throw analysis implementation that covers the semantics of .NET and CLR
+                </long_desc>
+            </value>
+            <value>
+                <name>AutoSelect</name>
+                <alias>auto-select</alias>
+                <default/>
+                <short_desc>Automatically Select Throw Analysis</short_desc>
+                <long_desc>
+                    When processing DEX or APK files, choose the Dalvik throw analysis. Otherwise,
+                    choose the unit throw analysis.
                 </long_desc>
             </value>
         </multiopt>
@@ -6983,6 +7203,14 @@ This locking scheme aims to achieve simple fine-grained locking.
                     the Dalvik VM semantics as opposed to those of the JVM.
                 </long_desc>
             </value>
+            <value>
+                <name>Dotnet</name>
+                <alias>dotnet</alias>
+                <short_desc>Dotnet Throw Analysis</short_desc>
+                <long_desc>
+                    Specialized throw analysis implementation that covers the semantics of .NET and CLR
+                </long_desc>
+            </value>
         </multiopt>
         <boolopt>
             <name>Omit Excepting Unit Edges</name>
@@ -7037,7 +7265,7 @@ This locking scheme aims to achieve simple fine-grained locking.
                 <p>
                     <code>-trim-cfgs</code>
                     is shorthand for <code>-throw-analysis
-                    unit -omit-excepting-unit-edges -p jb.tt enabled:true</code>.
+                        unit -omit-excepting-unit-edges -p jb.tt enabled:true</code>.
                 </p>
             </long_desc>
         </macroopt>

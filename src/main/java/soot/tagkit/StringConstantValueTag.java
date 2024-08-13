@@ -1,5 +1,6 @@
 package soot.tagkit;
 
+
 /*-
  * #%L
  * Soot - a J*va Optimization Framework
@@ -22,21 +23,30 @@ package soot.tagkit;
  * #L%
  */
 
-import soot.coffi.CONSTANT_Utf8_info;
+import soot.asm.AsmUtil;
 import soot.jimple.StringConstant;
 
 public class StringConstantValueTag extends ConstantValueTag {
+
+  public static final String NAME = "StringConstantValueTag";
+
   private final String value;
 
   public StringConstantValueTag(String value) {
+    super(AsmUtil.toUtf8(value));
     this.value = value;
-    this.bytes = CONSTANT_Utf8_info.toUtf8(value);
   }
 
   public String getStringValue() {
     return value;
   }
 
+  @Override
+  public String getName() {
+    return NAME;
+  }
+
+  @Override
   public String toString() {
     return "ConstantValue: " + value;
   }
@@ -59,21 +69,17 @@ public class StringConstantValueTag extends ConstantValueTag {
     if (this == obj) {
       return true;
     }
-    if (!super.equals(obj)) {
-      return false;
-    }
-    if (getClass() != obj.getClass()) {
+    if (!super.equals(obj) || (this.getClass() != obj.getClass())) {
       return false;
     }
     StringConstantValueTag other = (StringConstantValueTag) obj;
-    if (value == null) {
+    if (this.value == null) {
       if (other.value != null) {
         return false;
       }
-    } else if (!value.equals(other.value)) {
+    } else if (!this.value.equals(other.value)) {
       return false;
     }
     return true;
   }
-
 }

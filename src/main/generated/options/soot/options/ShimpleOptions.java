@@ -27,7 +27,7 @@ package soot.options;
 import java.util.*;
 
 /** Option parser for Shimple Control. */
-@javax.annotation.Generated(value = "Saxonica v3.0", comments = "from soot_options.xml")
+@jakarta.annotation.Generated(value = "Saxonica v3.0", comments = "from soot_options.xml")
 public class ShimpleOptions {
 
     private Map<String, String> options;
@@ -72,7 +72,7 @@ public class ShimpleOptions {
      * Extended SSA (SSI) --
      * Compute extended SSA (SSI) form.
      *
-     * If enabled, Shimple will created extended SSA (SSI) form.
+     * If enabled, Shimple will create extended SSA (SSI) form.
      */
     public boolean extended() {
         return soot.PhaseOptions.getBoolean(options, "extended");

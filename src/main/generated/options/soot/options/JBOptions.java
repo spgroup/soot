@@ -27,7 +27,7 @@ package soot.options;
 import java.util.*;
 
 /** Option parser for Jimple Body Creation. */
-@javax.annotation.Generated(value = "Saxonica v3.0", comments = "from soot_options.xml")
+@jakarta.annotation.Generated(value = "Saxonica v3.0", comments = "from soot_options.xml")
 public class JBOptions {
 
     private Map<String, String> options;
@@ -41,6 +41,15 @@ public class JBOptions {
      */
     public boolean enabled() {
         return soot.PhaseOptions.getBoolean(options, "enabled");
+    }
+
+    /**
+     * Optimize Jimple Body
+     * Perform several optmizations while creating the Jimple body 
+     * (such as copy propagation and dead assignment elimination).
+     */
+    public boolean optimize() {
+        return soot.PhaseOptions.getBoolean(options, "optimize");
     }
 
     /**

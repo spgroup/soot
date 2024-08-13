@@ -34,18 +34,21 @@ import soot.PrimType;
 import soot.RefType;
 import soot.ShortType;
 import soot.Type;
+import soot.dotnet.types.DotnetBasicTypes;
+import soot.options.Options;
 import soot.util.StringTools;
 import soot.util.Switch;
 
 public class ClassConstant extends Constant {
+
   public final String value;
 
-  private ClassConstant(String s) {
+  protected ClassConstant(String s) {
     this.value = s;
   }
 
   public static ClassConstant v(String value) {
-    if (value.contains(".")) {
+    if (value.indexOf('.') > -1) {
       throw new RuntimeException("ClassConstants must use class names separated by '/', not '.'!");
     }
     return new ClassConstant(value);
@@ -57,10 +60,9 @@ public class ClassConstant extends Constant {
 
   private static String sootTypeToString(Type tp) {
     if (tp instanceof RefType) {
-      return "L" + ((RefType) tp).getClassName().replaceAll("\\.", "/") + ";";
+      return "L" + ((RefType) tp).getClassName().replace('.', '/') + ";";
     } else if (tp instanceof ArrayType) {
-      ArrayType at = (ArrayType) tp;
-      return "[" + sootTypeToString(at.getElementType());
+      return "[" + sootTypeToString(((ArrayType) tp).getElementType());
     } else if (tp instanceof PrimType) {
       if (tp instanceof IntType) {
         return "I";
@@ -92,66 +94,78 @@ public class ClassConstant extends Constant {
    * @return True if this class constant denotes a reference type, otherwise false
    */
   public boolean isRefType() {
-    return value.startsWith("L") && value.endsWith(";");
+    String tmp = this.value;
+    return !tmp.isEmpty() && tmp.charAt(0) == 'L' && tmp.charAt(tmp.length() - 1) == ';';
   }
 
   public Type toSootType() {
     int numDimensions = 0;
-    String tmp = value;
-    while (tmp.startsWith("[")) {
+    String tmp = this.value;
+    while (!tmp.isEmpty() && tmp.charAt(0) == '[') {
       numDimensions++;
       tmp = tmp.substring(1);
     }
 
     Type baseType = null;
-    if (tmp.startsWith("L")) {
+    if (!tmp.isEmpty() && tmp.charAt(0) == 'L') {
       tmp = tmp.substring(1);
-      if (tmp.endsWith(";")) {
-        tmp = tmp.substring(0, tmp.length() - 1);
+      int lastIdx = tmp.length() - 1;
+      if (!tmp.isEmpty() && tmp.charAt(lastIdx) == ';') {
+        tmp = tmp.substring(0, lastIdx);
       }
-      tmp = tmp.replace("/", ".");
+      tmp = tmp.replace('/', '.');
       baseType = RefType.v(tmp);
-    } else if (tmp.equals("I")) {
-      baseType = IntType.v();
-    } else if (tmp.equals("B")) {
-      baseType = ByteType.v();
-    } else if (tmp.equals("C")) {
-      baseType = CharType.v();
-    } else if (tmp.equals("D")) {
-      baseType = DoubleType.v();
-    } else if (tmp.equals("F")) {
-      baseType = FloatType.v();
-    } else if (tmp.equals("J")) {
-      baseType = LongType.v();
-    } else if (tmp.equals("S")) {
-      baseType = ShortType.v();
-    } else if (tmp.equals("Z")) {
-      baseType = BooleanType.v();
     } else {
-      throw new RuntimeException("Unsupported class constant: " + value);
+      switch (tmp) {
+        case "I":
+          baseType = IntType.v();
+          break;
+        case "B":
+          baseType = ByteType.v();
+          break;
+        case "C":
+          baseType = CharType.v();
+          break;
+        case "D":
+          baseType = DoubleType.v();
+          break;
+        case "F":
+          baseType = FloatType.v();
+          break;
+        case "J":
+          baseType = LongType.v();
+          break;
+        case "S":
+          baseType = ShortType.v();
+          break;
+        case "Z":
+          baseType = BooleanType.v();
+          break;
+        default:
+          throw new RuntimeException("Unsupported class constant: " + value);
+      }
     }
 
     return numDimensions > 0 ? ArrayType.v(baseType, numDimensions) : baseType;
   }
 
   /**
-   * Gets an internal representation of the class used in Java bytecode.
-   * The returned string is similar to the fully qualified name but with '/' instead of '.'.
-   * Example: "java/lang/Object".
-   * See https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.2.1
+   * Gets an internal representation of the class used in Java bytecode. The returned string is similar to the fully
+   * qualified name but with '/' instead of '.'. Example: "java/lang/Object". See
+   * https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.2.1
    */
   public String toInternalString() {
-    String internal = value;
-    while (internal.startsWith("[")) {
+    String internal = this.value;
+    while (!internal.isEmpty() && internal.charAt(0) == '[') {
       internal = internal.substring(1);
     }
-    if (internal.endsWith(";")) {
-      internal = internal.substring(0, internal.length() - 1);
-      if (internal.startsWith("L")) {
+    int lastIdx = internal.length() - 1;
+    if (!internal.isEmpty() && internal.charAt(lastIdx) == ';') {
+      internal = internal.substring(0, lastIdx);
+      if (!internal.isEmpty() && internal.charAt(0) == 'L') {
         internal = internal.substring(1);
       }
     }
-
     return internal;
   }
 
@@ -176,10 +190,15 @@ public class ClassConstant extends Constant {
     return value;
   }
 
+  @Override
   public Type getType() {
+    if (Options.v().src_prec() == Options.src_prec_dotnet) {
+      return RefType.v(DotnetBasicTypes.SYSTEM_RUNTIMETYPEHANDLE);
+    }
     return RefType.v("java.lang.Class");
   }
 
+  @Override
   public void apply(Switch sw) {
     ((ConstantSwitch) sw).caseClassConstant(this);
   }

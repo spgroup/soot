@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 
 import soot.Body;
+import soot.Local;
 import soot.Scene;
 import soot.SceneTransformer;
 import soot.SootClass;
@@ -36,12 +37,16 @@ import soot.SootField;
 import soot.SootMethod;
 import soot.Type;
 import soot.Unit;
+import soot.UnitPatchingChain;
+import soot.Value;
 import soot.ValueBox;
 import soot.VoidType;
+import soot.jimple.AssignStmt;
 import soot.jimple.Constant;
 import soot.jimple.DoubleConstant;
 import soot.jimple.FieldRef;
 import soot.jimple.FloatConstant;
+import soot.jimple.InstanceFieldRef;
 import soot.jimple.IntConstant;
 import soot.jimple.InvokeExpr;
 import soot.jimple.Jimple;
@@ -78,6 +83,8 @@ public class ConstantValueToInitializerTransformer extends SceneTransformer {
   }
 
   public void transformClass(SootClass sc) {
+    final Jimple jimp = Jimple.v();
+
     SootMethod smInit = null;
     Set<SootField> alreadyInitialized = new HashSet<SootField>();
 
@@ -114,7 +121,7 @@ public class ConstantValueToInitializerTransformer extends SceneTransformer {
 
         if (constant != null) {
           if (sf.isStatic()) {
-            Stmt initStmt = Jimple.v().newAssignStmt(Jimple.v().newStaticFieldRef(sf.makeRef()), constant);
+            Stmt initStmt = jimp.newAssignStmt(jimp.newStaticFieldRef(sf.makeRef()), constant);
             if (smInit == null) {
               smInit = getOrCreateInitializer(sc, alreadyInitialized);
             }
@@ -128,10 +135,17 @@ public class ConstantValueToInitializerTransformer extends SceneTransformer {
             // It has to be after the constructor call to the super class
             // so that it can be potentially overwritten within the method,
             // without the default value taking precedence.
+            // If the constructor body already has the constant assignment,
+            // e.g. for final instance fields, we do not add another assignment.
             for (SootMethod m : sc.getMethods()) {
               if (m.isConstructor()) {
                 final Body body = m.retrieveActiveBody();
-                for (Unit u : body.getUnits()) {
+                final UnitPatchingChain units = body.getUnits();
+                Local thisLocal = null;
+                if (isInstanceFieldAssignedConstantInBody(sf, constant, body)) {
+                  continue;
+                }
+                for (Unit u : units) {
                   if (u instanceof Stmt) {
                     final Stmt s = (Stmt) u;
                     if (s.containsInvokeExpr()) {
@@ -141,10 +155,11 @@ public class ConstantValueToInitializerTransformer extends SceneTransformer {
                           // Calling another constructor in the same class
                           break;
                         }
-                        Stmt initStmt = Jimple.v()
-                            .newAssignStmt(Jimple.v().newInstanceFieldRef(body.getThisLocal(), sf.makeRef()), constant);
-
-                        body.getUnits().insertAfter(initStmt, s);
+                        if (thisLocal == null) {
+                          thisLocal = body.getThisLocal();
+                        }
+                        Stmt initStmt = jimp.newAssignStmt(jimp.newInstanceFieldRef(thisLocal, sf.makeRef()), constant);
+                        units.insertAfter(initStmt, s);
                         break;
                       }
                     }
@@ -160,15 +175,30 @@ public class ConstantValueToInitializerTransformer extends SceneTransformer {
     if (smInit != null) {
       Chain<Unit> units = smInit.getActiveBody().getUnits();
       if (units.isEmpty() || !(units.getLast() instanceof ReturnVoidStmt)) {
-        units.add(Jimple.v().newReturnVoidStmt());
+        units.add(jimp.newReturnVoidStmt());
       }
     }
   }
 
+  private boolean isInstanceFieldAssignedConstantInBody(SootField sf, Constant constant, Body body) {
+    for (Unit u : body.getUnits()) {
+      if (u instanceof AssignStmt) {
+        final AssignStmt as = ((AssignStmt) u);
+        if (as.containsFieldRef() && as.getFieldRef() instanceof InstanceFieldRef
+            && as.getLeftOpBox().equals(as.getFieldRefBox()) && as.getRightOp().equivTo(constant)) {
+          final InstanceFieldRef ifr = ((InstanceFieldRef) as.getFieldRef());
+          if (ifr.getField().equals(sf) && ifr.getBase().equivTo(body.getThisLocal())) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   private SootMethod getOrCreateInitializer(SootClass sc, Set<SootField> alreadyInitialized) {
-    SootMethod smInit;
     // Create a static initializer if we don't already have one
-    smInit = sc.getMethodByNameUnsafe(SootMethod.staticInitializerName);
+    SootMethod smInit = sc.getMethodByNameUnsafe(SootMethod.staticInitializerName);
     if (smInit == null) {
       smInit = Scene.v().makeSootMethod(SootMethod.staticInitializerName, Collections.<Type>emptyList(), VoidType.v());
       smInit.setActiveBody(Jimple.v().newBody(smInit));
@@ -177,20 +207,17 @@ public class ConstantValueToInitializerTransformer extends SceneTransformer {
     } else if (smInit.isPhantom()) {
       return null;
     } else {
-      smInit.retrieveActiveBody();
-
-      // We need to collect those variables that are already initialized
-      // somewhere
-      for (Unit u : smInit.getActiveBody().getUnits()) {
+      // We need to collect those variables that are already initialized somewhere
+      for (Unit u : smInit.retrieveActiveBody().getUnits()) {
         Stmt s = (Stmt) u;
         for (ValueBox vb : s.getDefBoxes()) {
-          if (vb.getValue() instanceof FieldRef) {
-            alreadyInitialized.add(((FieldRef) vb.getValue()).getField());
+          Value value = vb.getValue();
+          if (value instanceof FieldRef) {
+            alreadyInitialized.add(((FieldRef) value).getField());
           }
         }
       }
     }
     return smInit;
   }
-
 }

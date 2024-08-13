@@ -10,12 +10,12 @@ package soot.asm;
  * it under the terms of the GNU Lesser General Public License as
  * published by the Free Software Foundation, either version 2.1 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Lesser Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Lesser Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/lgpl-2.1.html>.
@@ -23,8 +23,20 @@ package soot.asm;
  */
 
 import com.google.common.base.Optional;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.objectweb.asm.Opcodes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import soot.ArrayType;
 import soot.BooleanType;
 import soot.ByteType;
@@ -40,18 +52,19 @@ import soot.RefType;
 import soot.ShortType;
 import soot.SootClass;
 import soot.Type;
+import soot.Unit;
 import soot.VoidType;
+import soot.jimple.AssignStmt;
+import soot.options.Options;
 
 /**
  * Contains static utility methods.
  *
  * @author Aaloan Miftah
  */
-/**
- * @author eric
- *
- */
+/** @author eric */
 public class AsmUtil {
+  private static final Logger logger = LoggerFactory.getLogger(AsmUtil.class);
 
   private static RefType makeRefType(String className, Optional<String> moduleName) {
     if (ModuleUtil.module_mode()) {
@@ -293,9 +306,7 @@ public class AsmUtil {
     return types;
   }
 
-  /**
-   * strips suffix for indicating an array type
-   */
+  /** strips suffix for indicating an array type */
   public static String baseTypeName(String s) {
     int index = s.indexOf("[");
     if (index < 0) {
@@ -307,5 +318,217 @@ public class AsmUtil {
 
   private AsmUtil() {
   }
+
+  public static int byteCodeToJavaVersion(int bytecodeVersion) {
+    int javaVersion;
+
+    switch (bytecodeVersion) {
+      case (Opcodes.V1_5):
+        javaVersion = Options.java_version_5;
+        break;
+      case (Opcodes.V1_6):
+        javaVersion = Options.java_version_6;
+        break;
+      case (Opcodes.V1_7):
+        javaVersion = Options.java_version_7;
+        break;
+      case (Opcodes.V1_8):
+        javaVersion = Options.java_version_8;
+        break;
+      case (Opcodes.V9):
+        javaVersion = Options.java_version_9;
+        break;
+      case (Opcodes.V10):
+        javaVersion = Options.java_version_10;
+        break;
+      case (Opcodes.V11):
+        javaVersion = Options.java_version_11;
+        break;
+      case (Opcodes.V12):
+        javaVersion = Options.java_version_12;
+        break;
+      default:
+        // we return 0 if we cannot determine the version to indicate that
+        javaVersion = Options.java_version_default;
+    }
+
+    return javaVersion;
+  }
+
+  public static int javaToBytecodeVersion(int javaVersion) {
+    int bytecodeVersion;
+
+    switch (javaVersion) {
+      case (Options.java_version_1):
+        bytecodeVersion = Opcodes.V1_1;
+        break;
+      case (Options.java_version_2):
+        bytecodeVersion = Opcodes.V1_2;
+        break;
+      case (Options.java_version_3):
+        bytecodeVersion = Opcodes.V1_3;
+        break;
+      case (Options.java_version_4):
+        bytecodeVersion = Opcodes.V1_4;
+        break;
+      case (Options.java_version_5):
+        bytecodeVersion = Opcodes.V1_5;
+        break;
+      case (Options.java_version_6):
+        bytecodeVersion = Opcodes.V1_6;
+        break;
+      case (Options.java_version_7):
+        bytecodeVersion = Opcodes.V1_7;
+        break;
+      case (Options.java_version_8):
+        bytecodeVersion = Opcodes.V1_8;
+        break;
+      case (Options.java_version_9):
+        bytecodeVersion = Opcodes.V9;
+        break;
+      case (Options.java_version_10):
+        bytecodeVersion = Opcodes.V10;
+        break;
+      case (Options.java_version_11):
+        bytecodeVersion = Opcodes.V11;
+        break;
+      case (Options.java_version_12):
+        bytecodeVersion = Opcodes.V12;
+        break;
+      default:
+        bytecodeVersion = Opcodes.V1_7;
+    }
+
+    return bytecodeVersion;
+  }
+
+  static boolean alreadyExists(Unit prev, Object left, Object right) {
+    if (prev instanceof AssignStmt) {
+      AssignStmt prevAsign = (AssignStmt) prev;
+      if (prevAsign.getLeftOp().equivTo(left) && prevAsign.getRightOp().equivTo(right)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+
+  public static Type[] jimpleTypesOfFieldOrMethodDescriptor(String descriptor) {
+    Type[] ret = null;
+    char[] d = descriptor.toCharArray();
+    int p = 0;
+    List<Type> conversionTypes = new ArrayList<Type>();
+
+    outer: while (p < d.length) {
+      boolean isArray = false;
+      int numDimensions = 0;
+      Type baseType = null;
+
+      swtch: while (p < d.length) {
+        switch (d[p]) {
+          // Skip parenthesis
+          case '(':
+          case ')':
+            p++;
+            continue outer;
+
+          case '[':
+            isArray = true;
+            numDimensions++;
+            p++;
+            continue swtch;
+          case 'B':
+            baseType = ByteType.v();
+            p++;
+            break swtch;
+          case 'C':
+            baseType = CharType.v();
+            p++;
+            break swtch;
+          case 'D':
+            baseType = DoubleType.v();
+            p++;
+            break swtch;
+          case 'F':
+            baseType = FloatType.v();
+            p++;
+            break swtch;
+          case 'I':
+            baseType = IntType.v();
+            p++;
+            break swtch;
+          case 'J':
+            baseType = LongType.v();
+            p++;
+            break swtch;
+          case 'L':
+            int index = p + 1;
+            while (index < d.length && d[index] != ';') {
+              if (d[index] == '/') {
+                d[index] = '.';
+              }
+              index++;
+            }
+            if (index >= d.length) {
+              throw new RuntimeException("Class reference has no ending ;");
+            }
+            String className = new String(d, p + 1, index - p - 1);
+            baseType = RefType.v(className);
+            p = index + 1;
+            break swtch;
+          case 'S':
+            baseType = ShortType.v();
+            p++;
+            break swtch;
+          case 'Z':
+            baseType = BooleanType.v();
+            p++;
+            break swtch;
+          case 'V':
+            baseType = VoidType.v();
+            p++;
+            break swtch;
+          default:
+            throw new RuntimeException("Unknown field type!");
+        }
+      }
+      if (baseType == null) {
+        continue;
+      }
+
+      // Determine type
+      Type t;
+      if (isArray) {
+        t = ArrayType.v(baseType, numDimensions);
+      } else {
+        t = baseType;
+      }
+
+      conversionTypes.add(t);
+    }
+
+    ret = conversionTypes.toArray(new Type[0]);
+    return ret;
+  }
+
+  /**
+   * Utility method; converts the given String into a utf8 encoded array of bytes.
+   *
+   * @param s
+   *          String to encode.
+   * @return array of bytes, utf8 encoded version of s.
+   */
+  public static byte[] toUtf8(String s) {
+    try {
+      ByteArrayOutputStream bs = new ByteArrayOutputStream(s.length());
+      DataOutputStream d = new DataOutputStream(bs);
+      d.writeUTF(s);
+      return bs.toByteArray();
+    } catch (IOException e) {
+      logger.debug("Some sort of IO exception in toUtf8 with " + s);
+    }
+    return null;
+  }
+
 
 }

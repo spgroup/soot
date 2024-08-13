@@ -12,11 +12,7 @@ import java.util.Collection;
 import soot.*;
 import soot.util.*;
 import soot.jimple.*;
-import soot.coffi.ClassFile;
-import soot.coffi.method_info;
-import soot.coffi.CONSTANT_Utf8_info;
 import soot.tagkit.SourceFileTag;
-import soot.coffi.CoffiMethodSource;
 /**
   * @ast class
  * 
@@ -641,6 +637,15 @@ public class BytecodeParser extends java.lang.Object implements Flags, BytecodeR
     private static final int CONSTANT_Utf8 = 1;
 
 
+    private static final int CONSTANT_MethodHandle= 15;
+
+
+    private static final int CONSTANT_MethodType = 16;
+
+
+    private static final int CONSTANT_InvokeDynamic = 18;
+
+
 
     public void parseEntry(int i) {
       int tag = u1();
@@ -677,6 +682,15 @@ public class BytecodeParser extends java.lang.Object implements Flags, BytecodeR
           break;
         case CONSTANT_Utf8:
           constantPool[i] = new CONSTANT_Utf8_Info(this);
+          break;
+        case CONSTANT_MethodHandle:
+          constantPool[i] = new CONSTANT_MethodHandle_Info(this);
+          break;
+        case CONSTANT_MethodType:
+          constantPool[i] = new CONSTANT_MethodType_Info(this);
+          break;
+        case CONSTANT_InvokeDynamic:
+          constantPool[i] = new CONSTANT_InvokeDynamic_Info(this);
           break;
         default:
           println("Unknown entry: " + tag);

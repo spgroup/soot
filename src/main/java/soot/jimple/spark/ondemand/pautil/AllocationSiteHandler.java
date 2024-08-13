@@ -10,12 +10,12 @@ package soot.jimple.spark.ondemand.pautil;
  * it under the terms of the GNU Lesser General Public License as
  * published by the Free Software Foundation, either version 2.1 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Lesser Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Lesser Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/lgpl-2.1.html>.
@@ -40,20 +40,17 @@ import soot.jimple.spark.pag.VarNode;
 import soot.jimple.spark.sets.P2SetVisitor;
 import soot.jimple.spark.sets.PointsToSetInternal;
 import soot.jimple.toolkits.callgraph.VirtualCalls;
-import soot.util.NumberedString;
 
 /**
  * Interface for handler for when an allocation site is encountered in a pointer analysis query.
- * 
+ *
  * @author manu
- * 
- * 
  */
 public interface AllocationSiteHandler {
 
   /**
    * handle a particular allocation site
-   * 
+   *
    * @param allocNode
    *          the abstract location node
    * @param callStack
@@ -70,7 +67,7 @@ public interface AllocationSiteHandler {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see AAA.algs.AllocationSiteHandler#handleAllocationSite(soot.jimple.spark.pag.AllocNode, java.lang.Integer)
      */
     public boolean handleAllocationSite(AllocNode allocNode, ImmutableStack<Integer> callStack) {
@@ -107,7 +104,7 @@ public interface AllocationSiteHandler {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see AAA.algs.AllocationSiteHandler#handleAllocationSite(soot.jimple.spark.pag.AllocNode, java.lang.Integer)
      */
     public boolean handleAllocationSite(AllocNode allocNode, ImmutableStack<Integer> callStack) {
@@ -137,7 +134,6 @@ public interface AllocationSiteHandler {
             returnValue = !manager.castNeverFails(n.getType(), type);
           }
         }
-
       };
       dst.getP2Set().forall(v);
       return v.getReturnValue();
@@ -150,27 +146,24 @@ public interface AllocationSiteHandler {
 
     public Type receiverType;
 
-    public NumberedString methodStr;
+    public SootMethod callee;
 
     public Set<SootMethod> possibleMethods = new HashSet<SootMethod>();
 
     /**
      * @param pag
      * @param receiverType
-     * @param methodName
-     * @param parameterTypes
-     * @param returnType
      */
-    public VirtualCallHandler(PAG pag, Type receiverType, NumberedString methodStr) {
+    public VirtualCallHandler(PAG pag, Type receiverType, SootMethod callee) {
       super();
       this.pag = pag;
       this.receiverType = receiverType;
-      this.methodStr = methodStr;
+      this.callee = callee;
     }
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see AAA.algs.AllocationSiteHandler#handleAllocationSite(soot.jimple.spark.pag.AllocNode, AAA.algs.MethodContext)
      */
     public boolean handleAllocationSite(AllocNode allocNode, ImmutableStack<Integer> callStack) {
@@ -191,11 +184,11 @@ public interface AllocationSiteHandler {
         // we'll invoke the java.lang.Object method in this
         // case
         // Assert.chk(varNodeType.toString().equals("java.lang.Object"));
-        type = Scene.v().getSootClass("java.lang.Object").getType();
+        type = Scene.v().getSootClass(Scene.v().getObjectType().toString()).getType();
       }
       RefType refType = (RefType) type;
       SootMethod targetMethod = null;
-      targetMethod = VirtualCalls.v().resolveNonSpecial(refType, methodStr);
+      targetMethod = VirtualCalls.v().resolveNonSpecial(refType, callee.makeRef());
       if (!possibleMethods.contains(targetMethod)) {
         possibleMethods.add(targetMethod);
         if (possibleMethods.size() > 1) {

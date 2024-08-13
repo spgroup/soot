@@ -74,7 +74,6 @@ import soot.jimple.spark.sets.PointsToSetEqualsWrapper;
 import soot.jimple.spark.sets.PointsToSetInternal;
 import soot.jimple.toolkits.callgraph.VirtualCalls;
 import soot.toolkits.scalar.Pair;
-import soot.util.NumberedString;
 
 /**
  * Tries to find imprecision in points-to sets from a previously run analysis. Requires that all sub-results of previous
@@ -380,10 +379,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
     PointsToSet contextSensitiveResult = null;
     while (true) {
       numPasses++;
-      if (DEBUG_PASS != -1 && numPasses > DEBUG_PASS) {
-        break;
-      }
-      if (numPasses > maxPasses) {
+      if ((DEBUG_PASS != -1 && numPasses > DEBUG_PASS) || (numPasses > maxPasses)) {
         break;
       }
       if (DEBUG) {
@@ -484,10 +480,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
     numPasses = 0;
     while (true) {
       numPasses++;
-      if (DEBUG_PASS != -1 && numPasses > DEBUG_PASS) {
-        return true;
-      }
-      if (numPasses > maxPasses) {
+      if ((DEBUG_PASS != -1 && numPasses > DEBUG_PASS) || (numPasses > maxPasses)) {
         return true;
       }
       if (DEBUG) {
@@ -587,10 +580,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
     Set<VarNode> smallest = null;
     while (true) {
       numPasses++;
-      if (DEBUG_PASS != -1 && numPasses > DEBUG_PASS) {
-        return smallest;
-      }
-      if (numPasses > maxPasses) {
+      if ((DEBUG_PASS != -1 && numPasses > DEBUG_PASS) || (numPasses > maxPasses)) {
         return smallest;
       }
       if (DEBUG) {
@@ -981,7 +971,6 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
             if (upContext.size() < ImmutableStack.getMaxSize()) {
               newUpContext = pushWithRecursionCheck(upContext, assignEdge);
             }
-            ;
           }
           p.prop(new VarContextAndUp(newVarAndContext.var, newVarAndContext.context, newUpContext));
         }
@@ -999,7 +988,6 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
         }
 
       }
-      ;
       UpContextEdgeHandler edgeHandler = new UpContextEdgeHandler();
       processIncomingEdges(edgeHandler, worklist);
       nesting--;
@@ -1138,22 +1126,22 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
   }
 
   @SuppressWarnings("unchecked")
-  protected Set<SootMethod> getCallTargets(PointsToSetInternal p2Set, NumberedString methodStr, Type receiverType,
+  protected Set<SootMethod> getCallTargets(PointsToSetInternal p2Set, SootMethod callee, Type receiverType,
       Set<SootMethod> possibleTargets) {
-    List<Object> args = Arrays.asList(p2Set, methodStr, receiverType, possibleTargets);
+    List<Object> args = Arrays.asList(p2Set, callee, receiverType, possibleTargets);
     if (callTargetsArgCache.containsKey(args)) {
       return callTargetsArgCache.get(args);
     }
     Set<Type> types = p2Set.possibleTypes();
     Set<SootMethod> ret = new HashSet<SootMethod>();
     for (Type type : types) {
-      ret.addAll(getCallTargetsForType(type, methodStr, receiverType, possibleTargets));
+      ret.addAll(getCallTargetsForType(type, callee, receiverType, possibleTargets));
     }
     callTargetsArgCache.put(args, ret);
     return ret;
   }
 
-  protected Set<SootMethod> getCallTargetsForType(Type type, NumberedString methodStr, Type receiverType,
+  protected Set<SootMethod> getCallTargetsForType(Type type, SootMethod callee, Type receiverType,
       Set<SootMethod> possibleTargets) {
     if (!pag.getTypeManager().castNeverFails(type, receiverType)) {
       return Collections.<SootMethod>emptySet();
@@ -1172,11 +1160,11 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
       // we'll invoke the java.lang.Object method in this
       // case
       // Assert.chk(varNodeType.toString().equals("java.lang.Object"));
-      type = Scene.v().getSootClass("java.lang.Object").getType();
+      type = Scene.v().getSootClass(Scene.v().getObjectType().toString()).getType();
     }
     RefType refType = (RefType) type;
     SootMethod targetMethod = null;
-    targetMethod = VirtualCalls.v().resolveNonSpecial(refType, methodStr);
+    targetMethod = VirtualCalls.v().resolveNonSpecial(refType, callee.makeRef());
     return Collections.<SootMethod>singleton(targetMethod);
 
   }
@@ -1318,7 +1306,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
       Set<SootMethod> toBeCollapsed = new ArraySet<SootMethod>();
       int callSiteInd = 0;
       for (; callSiteInd < context.size() && !context.get(callSiteInd).equals(callSite); callSiteInd++) {
-        ;
+
       }
       for (; callSiteInd < context.size(); callSiteInd++) {
         toBeCollapsed.add(csInfo.getInvokingMethod(context.get(callSiteInd)));
@@ -1493,7 +1481,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
         Set<SootMethod> toBeCollapsed = new ArraySet<SootMethod>();
         int callSiteInd = 0;
         for (; callSiteInd < context.size() && !context.get(callSiteInd).equals(callSite); callSiteInd++) {
-          ;
+
         }
         // int numToPop = 0;
         for (; callSiteInd < context.size(); callSiteInd++) {
@@ -1523,10 +1511,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
   }
 
   protected boolean refineAlias(VarNode v1, VarNode v2, PointsToSetInternal intersection, HeuristicType heuristic) {
-    if (refineAliasInternal(v1, v2, intersection, heuristic)) {
-      return true;
-    }
-    if (refineAliasInternal(v2, v1, intersection, heuristic)) {
+    if (refineAliasInternal(v1, v2, intersection, heuristic) || refineAliasInternal(v2, v1, intersection, heuristic)) {
       return true;
     }
     return false;
@@ -1537,10 +1522,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
     numPasses = 0;
     while (true) {
       numPasses++;
-      if (DEBUG_PASS != -1 && numPasses > DEBUG_PASS) {
-        return false;
-      }
-      if (numPasses > maxPasses) {
+      if ((DEBUG_PASS != -1 && numPasses > DEBUG_PASS) || (numPasses > maxPasses)) {
         return false;
       }
       if (DEBUG) {
@@ -1597,7 +1579,6 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
     final VarNode receiver = csInfo.getReceiverForVirtCallSite(callSite);
     final Type receiverType = receiver.getType();
     final SootMethod invokedMethod = csInfo.getInvokedMethod(callSite);
-    final NumberedString methodSig = invokedMethod.getNumberedSubSignature();
     final Set<SootMethod> allTargets = csInfo.getCallSiteTargets(callSite);
     if (!refineCallGraph) {
       callGraphStack.pop();
@@ -1616,7 +1597,6 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
         }
       }
     }
-    ;
     final Helper h = new Helper();
     h.prop(new VarAndContext(receiver, origContext));
     while (!worklist.isEmpty()) {
@@ -1638,7 +1618,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
       Node[] newNodes = pag.allocInvLookup(curVar);
       for (int i = 0; i < newNodes.length; i++) {
         AllocNode allocNode = (AllocNode) newNodes[i];
-        for (SootMethod method : getCallTargetsForType(allocNode.getType(), methodSig, receiverType, allTargets)) {
+        for (SootMethod method : getCallTargetsForType(allocNode.getType(), invokedMethod, receiverType, allTargets)) {
           callSiteToResolvedTargets.put(callSiteAndContext, method);
         }
       }
@@ -1692,7 +1672,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
             boolean skipMatch = false;
             if (oneMatch) {
               PointsToSetInternal matchSrcPTo = matchSrc.getP2Set();
-              Set<SootMethod> matchSrcCallTargets = getCallTargets(matchSrcPTo, methodSig, receiverType, allTargets);
+              Set<SootMethod> matchSrcCallTargets = getCallTargets(matchSrcPTo, invokedMethod, receiverType, allTargets);
               if (matchSrcCallTargets.size() <= 1) {
                 skipMatch = true;
                 for (SootMethod method : matchSrcCallTargets) {
@@ -1836,10 +1816,7 @@ public final class DemandCSPointsTo implements PointsToAnalysis {
       numPasses = 0;
       while (true) {
         numPasses++;
-        if (DEBUG_PASS != -1 && numPasses > DEBUG_PASS) {
-          return false;
-        }
-        if (numPasses > maxPasses) {
+        if ((DEBUG_PASS != -1 && numPasses > DEBUG_PASS) || (numPasses > maxPasses)) {
           return false;
         }
         if (DEBUG) {

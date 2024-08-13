@@ -165,7 +165,7 @@ public final class MethodPAG {
 
   public static MethodPAG v(PAG pag, SootMethod m) {
     MethodPAG ret = G.v().MethodPAG_methodToPag.get(m);
-    if (ret == null) {
+    if (ret == null || pag != ret.pag) {
       ret = new MethodPAG(pag, m);
       G.v().MethodPAG_methodToPag.put(m, ret);
     }
@@ -281,7 +281,7 @@ public final class MethodPAG {
     if (method.getNumberedSubSignature().equals(sigCanonicalize)) {
       SootClass cl = method.getDeclaringClass();
       while (cl != null) {
-        if (cl.equals(Scene.v().getSootClass("java.io.FileSystem"))) {
+        if (cl.equals(Scene.v().getSootClassUnsafe("java.io.FileSystem"))) {
           addInEdge(pag.nodeFactory().caseCanonicalPath(), nodeFactory.caseRet());
         }
         cl = cl.getSuperclassUnsafe();

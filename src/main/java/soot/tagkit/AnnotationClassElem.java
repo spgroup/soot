@@ -25,18 +25,29 @@ package soot.tagkit;
 import soot.util.Switch;
 
 /**
- * Represents the base class of annotation elements each annotation can have several elements for Java 1.5.
+ * Represents the Class annotation element each annotation can have several elements for Java 1.5.
  */
-
 public class AnnotationClassElem extends AnnotationElem {
 
-  String desc;
+  private final String desc;
+
+  /**
+   *
+   * @param typeName
+   *          type name
+   * @param elementName
+   *          name of element
+   */
+  public AnnotationClassElem(String typeName, String elementName) {
+    this(typeName, 'c', elementName);
+  }
 
   public AnnotationClassElem(String s, char kind, String name) {
     super(kind, name);
     this.desc = s;
   }
 
+  @Override
   public String toString() {
     return super.toString() + " decription: " + desc;
   }
@@ -63,21 +74,17 @@ public class AnnotationClassElem extends AnnotationElem {
     if (this == obj) {
       return true;
     }
-    if (!super.equals(obj)) {
-      return false;
-    }
-    if (getClass() != obj.getClass()) {
+    if (!super.equals(obj) || (this.getClass() != obj.getClass())) {
       return false;
     }
     AnnotationClassElem other = (AnnotationClassElem) obj;
-    if (desc == null) {
+    if (this.desc == null) {
       if (other.desc != null) {
         return false;
       }
-    } else if (!desc.equals(other.desc)) {
+    } else if (!this.desc.equals(other.desc)) {
       return false;
     }
     return true;
   }
-
 }

@@ -25,8 +25,10 @@ package soot.util;
 import heros.solver.Pair;
 
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 public abstract class AbstractMultiMap<K, V> implements MultiMap<K, V>, Serializable {
@@ -75,7 +77,6 @@ public abstract class AbstractMultiMap<K, V> implements MultiMap<K, V>, Serializ
         currentKey = null;
       }
     }
-
   }
 
   @Override
@@ -90,7 +91,7 @@ public abstract class AbstractMultiMap<K, V> implements MultiMap<K, V>, Serializ
   }
 
   @Override
-  public boolean putAll(Map<K, Set<V>> m) {
+  public boolean putAll(Map<K, Collection<V>> m) {
     boolean hasNew = false;
     for (K key : m.keySet()) {
       if (putAll(key, m.get(key))) {
@@ -117,5 +118,16 @@ public abstract class AbstractMultiMap<K, V> implements MultiMap<K, V>, Serializ
   @Override
   public Iterator<Pair<K, V>> iterator() {
     return new EntryIterator();
+  }
+
+  @Override
+  public boolean putMap(Map<K, V> m) {
+    boolean hasNew = false;
+    for (Entry<K, V> entry : m.entrySet()) {
+      if (put(entry.getKey(), entry.getValue())) {
+        hasNew = true;
+      }
+    }
+    return hasNew;
   }
 }

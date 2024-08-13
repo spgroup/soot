@@ -15,12 +15,12 @@ package soot.dexpler;
  * it under the terms of the GNU Lesser General Public License as
  * published by the Free Software Foundation, either version 2.1 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Lesser Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Lesser Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/lgpl-2.1.html>.
@@ -30,16 +30,17 @@ package soot.dexpler;
 import static soot.dexpler.instructions.InstructionFactory.fromInstruction;
 
 import com.google.common.collect.ArrayListMultimap;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.jf.dexlib2.analysis.ClassPath;
 import org.jf.dexlib2.analysis.ClassPathResolver;
@@ -114,6 +115,7 @@ import soot.jimple.toolkits.scalar.IdentityCastEliminator;
 import soot.jimple.toolkits.scalar.IdentityOperationEliminator;
 import soot.jimple.toolkits.scalar.MethodStaticnessCorrector;
 import soot.jimple.toolkits.scalar.NopEliminator;
+import soot.jimple.toolkits.scalar.UnconditionalBranchFolder;
 import soot.jimple.toolkits.scalar.UnreachableCodeEliminator;
 import soot.jimple.toolkits.typing.TypeAssigner;
 import soot.options.JBOptions;
@@ -138,7 +140,7 @@ public class DexBody {
   // registers
   protected Local[] registerLocals;
   protected Local storeResultLocal;
-  protected Map<Integer, DexlibAbstractInstruction> instructionAtAddress;
+  protected TreeMap<Integer, DexlibAbstractInstruction> instructionAtAddress;
 
   protected List<DeferableInstruction> deferredInstructions;
   protected Set<RetypeableInstruction> instructionsToRetype;
@@ -202,6 +204,7 @@ public class DexBody {
 
   /**
    * Allocate a fresh name for Jimple local
+   *
    * @param hint
    *          A name that the fresh name will look like
    * @author Zhixuan Yang (yangzhixuan@sbrella.com)
@@ -214,7 +217,7 @@ public class DexBody {
     if (!takenLocalNames.contains(hint)) {
       fresh = hint;
     } else {
-      for (int i = 1; ; i++) {
+      for (int i = 1;; i++) {
         fresh = hint + Integer.toString(i);
         if (!takenLocalNames.contains(fresh)) {
           break;
@@ -260,7 +263,9 @@ public class DexBody {
     }
 
     instructions = new ArrayList<DexlibAbstractInstruction>();
-    instructionAtAddress = new HashMap<Integer, DexlibAbstractInstruction>();
+
+    // Use descending order
+    instructionAtAddress = new TreeMap<Integer, DexlibAbstractInstruction>();
     localDebugs = ArrayListMultimap.create();
     takenLocalNames = new HashSet<String>();
 
@@ -284,8 +289,7 @@ public class DexBody {
           continue;
         }
         ins.setLineNumber(ln.getLineNumber());
-      } else if (di instanceof ImmutableStartLocal
-              || di instanceof ImmutableRestartLocal) {
+      } else if (di instanceof ImmutableStartLocal || di instanceof ImmutableRestartLocal) {
         int reg, codeAddr;
         String type, signature, name;
         if (di instanceof ImmutableStartLocal) {
@@ -305,7 +309,9 @@ public class DexBody {
           type = sl.getType();
           signature = sl.getSignature();
         }
-        localDebugs.put(reg, new RegDbgEntry(codeAddr, -1/* endAddress */, reg, name, type, signature));
+        if (name != null && type != null) {
+          localDebugs.put(reg, new RegDbgEntry(codeAddr, -1 /* endAddress */, reg, name, type, signature));
+        }
       } else if (di instanceof ImmutableEndLocal) {
         ImmutableEndLocal el = (ImmutableEndLocal) di;
         List<RegDbgEntry> lds = localDebugs.get(el.getRegister());
@@ -324,7 +330,7 @@ public class DexBody {
 
   /**
    * Extracts the list of dalvik instructions from dexlib and converts them into our own instruction data model
-   * 
+   *
    * @param code
    *          The dexlib method implementation
    */
@@ -338,9 +344,7 @@ public class DexBody {
     }
   }
 
-  /**
-   * Return the types that are used in this body.
-   */
+  /** Return the types that are used in this body. */
   public Set<Type> usedTypes() {
     Set<Type> types = new HashSet<Type>();
     for (DexlibAbstractInstruction i : instructions) {
@@ -407,10 +411,7 @@ public class DexBody {
     return jBody;
   }
 
-  /**
-   * Return the Locals that are associated with the current register state.
-   *
-   */
+  /** Return the Locals that are associated with the current register state. */
   public Local[] getRegisterLocals() {
     return registerLocals;
   }
@@ -418,6 +419,7 @@ public class DexBody {
   /**
    * Return the Local that are associated with the number in the current register state.
    *
+   * <p>
    * Handles if the register number actually points to a method parameter.
    *
    * @param num
@@ -426,7 +428,7 @@ public class DexBody {
    */
   public Local getRegisterLocal(int num) throws InvalidDalvikBytecodeException {
     int totalRegisters = registerLocals.length;
-    if (num > totalRegisters) {
+    if (num >= totalRegisters) {
       throw new InvalidDalvikBytecodeException(
           "Trying to access register " + num + " but only " + totalRegisters + " is/are available.");
     }
@@ -446,27 +448,27 @@ public class DexBody {
    *           if address is not part of this body.
    */
   public DexlibAbstractInstruction instructionAtAddress(int address) {
-    DexlibAbstractInstruction i = null;
-    while (i == null && address >= 0) {
-      // catch addresses can be in the middlde of last instruction. Ex. in
-      // com.letang.ldzja.en.apk:
-      //
-      // 042c46: 7020 2a15 0100 |008f: invoke-direct {v1, v0},
-      // Ljavax/mi...
-      // 042c4c: 2701 |0092: throw v1
-      // catches : 4
-      // <any> -> 0x0065
-      // 0x0069 - 0x0093
-      //
-      // SA, 14.05.2014: We originally scanned only two code units back.
-      // This is not sufficient
-      // if we e.g., have a wide constant and the line number in the debug
-      // sections points to
-      // some address the middle.
-      i = instructionAtAddress.get(address);
-      address--;
+
+    // catch addresses can be in the middlde of last instruction. Ex. in
+    // com.letang.ldzja.en.apk:
+    //
+    // 042c46: 7020 2a15 0100 |008f: invoke-direct {v1, v0},
+    // Ljavax/mi...
+    // 042c4c: 2701 |0092: throw v1
+    // catches : 4
+    // <any> -> 0x0065
+    // 0x0069 - 0x0093
+    //
+    // SA, 14.05.2014: We originally scanned only two code units back.
+    // This is not sufficient
+    // if we e.g., have a wide constant and the line number in the debug
+    // sections points to
+    // some address the middle.
+    Integer key = instructionAtAddress.floorKey(address);
+    if (key == null) {
+      return null;
     }
-    return i;
+    return instructionAtAddress.get(key);
   }
 
   /**
@@ -518,9 +520,8 @@ public class DexBody {
       add(idStmt);
       paramLocals.add(thisLocal);
       if (IDalvikTyper.ENABLE_DVKTYPER) {
-        DalvikTyper.v().setType(idStmt.leftBox, jBody.getMethod().getDeclaringClass().getType(), false);
+        DalvikTyper.v().setType(idStmt.getLeftOpBox(), jBody.getMethod().getDeclaringClass().getType(), false);
       }
-
     }
     {
       int i = 0; // index of parameter type
@@ -558,7 +559,7 @@ public class DexBody {
         add(idStmt);
         paramLocals.add(gen);
         if (IDalvikTyper.ENABLE_DVKTYPER) {
-          DalvikTyper.v().setType(idStmt.leftBox, t, false);
+          DalvikTyper.v().setType(idStmt.getLeftOpBox(), t, false);
         }
 
         // some parameters may be encoded on two registers.
@@ -630,12 +631,12 @@ public class DexBody {
         dangling.finalize(this, instruction);
         dangling = null;
       }
-      instruction.jimplify(this);
       if (instruction.getLineNumber() > 0) {
         prevLineNumber = instruction.getLineNumber();
       } else {
         instruction.setLineNumber(prevLineNumber);
       }
+      instruction.jimplify(this);
     }
     if (dangling != null) {
       dangling.finalize(this, null);
@@ -685,9 +686,6 @@ public class DexBody {
 
     // Make sure that we don't have any overlapping uses due to returns
     DexReturnInliner.v().transform(jBody);
-
-    // Shortcut: Reduce array initializations
-    DexArrayInitReducer.v().transform(jBody);
 
     // split first to find undefined uses
     getLocalSplitter().transform(jBody);
@@ -764,8 +762,22 @@ public class DexBody {
 
     // Remove "instanceof" checks on the null constant
     DexNullInstanceofTransformer.v().transform(jBody);
+    DexNullIfTransformer ni = DexNullIfTransformer.v();
+    ni.transform(jBody);
+    if (ni.hasModifiedBody()) {
+      // Now we might have unreachable code
+      ConditionalBranchFolder.v().transform(jBody);
+      UnreachableCodeEliminator.v().transform(jBody);
+      DeadAssignmentEliminator.v().transform(jBody);
+      UnconditionalBranchFolder.v().transform(jBody);
+    }
 
     TypeAssigner.v().transform(jBody);
+
+    // Shortcut: Reduce array initializations
+    // We need to do this after typing, because otherwise we run into problems
+    // when float constants (saved as int in dex code) are saved in the array.
+    DexArrayInitReducer.v().transform(jBody);
 
     final RefType objectType = RefType.v("java.lang.Object");
     if (IDalvikTyper.ENABLE_DVKTYPER) {
@@ -778,10 +790,7 @@ public class DexBody {
             if (op1 instanceof Constant && op2 instanceof Local) {
               Local l = (Local) op2;
               Type ltype = l.getType();
-              if (ltype instanceof PrimType) {
-                continue;
-              }
-              if (!(op1 instanceof IntConstant)) {
+              if ((ltype instanceof PrimType) || !(op1 instanceof IntConstant)) {
                 // null is
                 // IntConstant(0)
                 // in Dalvik
@@ -796,10 +805,7 @@ public class DexBody {
             } else if (op1 instanceof Local && op2 instanceof Constant) {
               Local l = (Local) op1;
               Type ltype = l.getType();
-              if (ltype instanceof PrimType) {
-                continue;
-              }
-              if (!(op2 instanceof IntConstant)) {
+              if ((ltype instanceof PrimType) || !(op2 instanceof IntConstant)) {
                 // null is
                 // IntConstant(0)
                 // in Dalvik
@@ -831,7 +837,6 @@ public class DexBody {
             } else {
               throw new RuntimeException("error: do not handle if: " + u);
             }
-
           }
         }
       }
@@ -861,7 +866,6 @@ public class DexBody {
         System.out.println("removing null_type local " + l);
         l.setType(objectType);
       }
-
     }
 
     // We pack locals that are not used in overlapping regions. This may
@@ -907,9 +911,15 @@ public class DexBody {
     // before as well, but we didn't know).
     UnreachableCodeEliminator.v().transform(jBody);
 
-    // Not sure whether we need this even though we do it earlier on as
-    // the earlier pass does not have type information
-    // CopyPropagator.v().transform(jBody);
+    // Both, the original type assigner (Efficient Inference of Static
+    // Types for Java Bytecode, 2000) and the fast type assigner
+    // (Efficient local type inference, 2008) do split the local used in
+    // the NewExpr and <init> InvokeExpr in stage 2 to obtain bytecode for
+    // which a valid typing exists. This happens eagerly _for all_ object
+    // creation sites, leading to unnecessary aliases at most of the
+    // object creation sites. Copy Propagation here removes all of these
+    // unnecessary copies from the TypeAssigner.
+    CopyPropagator.v().transform(jBody);
 
     // we might have gotten new dead assignments and unused locals through
     // copy propagation and unreachable code elimination, so we have to do
@@ -1020,10 +1030,7 @@ public class DexBody {
     return this.copyPropagator;
   }
 
-  /**
-   * Set a dangling instruction for this body.
-   *
-   */
+  /** Set a dangling instruction for this body. */
   public void setDanglingInstruction(DanglingInstruction i) {
     dangling = i;
   }
@@ -1046,6 +1053,7 @@ public class DexBody {
   /**
    * Return the instructions that appear (lexically) before the given instruction.
    *
+   * <p>
    * The instruction immediately before the given is the first instruction and so on.
    *
    * @param instruction
@@ -1066,14 +1074,15 @@ public class DexBody {
   /**
    * Add the traps of this body.
    *
+   * <p>
    * Should only be called at the end jimplify.
    */
   private void addTraps() {
     final Jimple jimple = Jimple.v();
     for (TryBlock<? extends ExceptionHandler> tryItem : tries) {
       int startAddress = tryItem.getStartCodeAddress();
-      int length = tryItem.getCodeUnitCount();// .getTryLength();
-      int endAddress = startAddress + length;// - 1;
+      int length = tryItem.getCodeUnitCount(); // .getTryLength();
+      int endAddress = startAddress + length; // - 1;
       Unit beginStmt = instructionAtAddress(startAddress).getUnit();
       // (startAddress + length) typically points to the first byte of the
       // first instruction after the try block
@@ -1117,5 +1126,4 @@ public class DexBody {
       }
     }
   }
-
 }

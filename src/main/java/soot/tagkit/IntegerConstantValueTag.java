@@ -25,18 +25,27 @@ package soot.tagkit;
 import soot.jimple.IntConstant;
 
 public class IntegerConstantValueTag extends ConstantValueTag {
+
+  public static final String NAME = "IntegerConstantValueTag";
+
   private final int value;
 
   public IntegerConstantValueTag(int value) {
+    super(new byte[] { (byte) ((value >> 24) & 0xff), (byte) ((value >> 16) & 0xff), (byte) ((value >> 8) & 0xff),
+        (byte) ((value) & 0xff) });
     this.value = value;
-    this.bytes = new byte[] { (byte) ((value >> 24) & 0xff), (byte) ((value >> 16) & 0xff), (byte) ((value >> 8) & 0xff),
-        (byte) ((value) & 0xff) };
   }
 
   public int getIntValue() {
     return value;
   }
 
+  @Override
+  public String getName() {
+    return NAME;
+  }
+
+  @Override
   public String toString() {
     return "ConstantValue: " + Integer.toString(value);
   }
@@ -59,17 +68,10 @@ public class IntegerConstantValueTag extends ConstantValueTag {
     if (this == obj) {
       return true;
     }
-    if (!super.equals(obj)) {
-      return false;
-    }
-    if (getClass() != obj.getClass()) {
+    if (!super.equals(obj) || (this.getClass() != obj.getClass())) {
       return false;
     }
     IntegerConstantValueTag other = (IntegerConstantValueTag) obj;
-    if (value != other.value) {
-      return false;
-    }
-    return true;
+    return this.value == other.value;
   }
-
 }

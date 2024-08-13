@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import soot.ArrayType;
 import soot.DoubleType;
 import soot.FloatType;
+import soot.G;
 import soot.IntType;
 import soot.Local;
 import soot.LongType;
@@ -364,7 +365,7 @@ public class TypeResolverBV {
 
     if (max > 1) {
       // hack for J2ME library, reported by Stephen Cheng
-      if (!Options.v().j2me()) {
+      if (!Options.v().j2me() && Options.v().src_prec() != Options.src_prec_dotnet) {
         typeVariable(ArrayType.v(RefType.v("java.lang.Cloneable"), max - 1));
         typeVariable(ArrayType.v(RefType.v("java.io.Serializable"), max - 1));
       }
@@ -639,7 +640,7 @@ public class TypeResolverBV {
       TypeVariableBV var = typeVariable(local);
 
       if (var == null) {
-        local.setType(RefType.v("java.lang.Object"));
+        local.setType(Scene.v().getObjectType());
       } else if (var.depth() == 0) {
         if (var.type() == null) {
           TypeVariableBV.error("Type Error(5):  Variable without type");
@@ -682,7 +683,7 @@ public class TypeResolverBV {
       TypeVariableBV var = typeVariable(local);
 
       if (var == null || var.approx() == null || var.approx().type() == null) {
-        local.setType(RefType.v("java.lang.Object"));
+        local.setType(Scene.v().getObjectType());
       } else {
         local.setType(var.approx().type());
       }
@@ -856,7 +857,7 @@ public class TypeResolverBV {
   }
 
   private void split_new() {
-    LocalDefs defs = LocalDefs.Factory.newLocalDefs(stmtBody);
+    LocalDefs defs = G.v().soot_toolkits_scalar_LocalDefsFactory().newLocalDefs(stmtBody);
     PatchingChain<Unit> units = stmtBody.getUnits();
     Stmt[] stmts = new Stmt[units.size()];
 
